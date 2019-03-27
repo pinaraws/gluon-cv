@@ -4,6 +4,9 @@ project(gluoncv-cpp-inference)
 
 set(CMAKE_CXX_STANDARD 11)
 
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0")
+
 if(NOT MXNET_ROOT)
   set(MXNET_ROOT $ENV{MXNET_ROOT})
 endif()

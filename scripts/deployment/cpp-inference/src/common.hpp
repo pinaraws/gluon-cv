@@ -79,6 +79,26 @@ inline NDArray AsData(cv::Mat bgr_image, Context ctx = Context::cpu()) {
     return NDArray(data_buffer, Shape(1, rgb_image.rows, rgb_image.cols, 3), ctx);
 }
 
+// Load data from CV BGR image
+inline NDArray AsTensor(cv::Mat bgr_image, Context ctx = Context::cpu()) {
+    // convert BGR image from OpenCV to RGB in MXNet.
+    cv::Mat rgb_image, rgb_image_n;
+    cv::cvtColor(bgr_image, rgb_image, cv::COLOR_BGR2RGB);
+    // convert to float32 from uint8
+    rgb_image.convertTo(rgb_image, CV_32FC3);
+    std::vector<float> data_buffer;
+    cv::normalize(rgb_image, rgb_image_n, 0, 1, cv::NORM_MINMAX);
+    cv::Mat flat_image = rgb_image_n.reshape(1, 1);
+    for (int c = 0; c < 3; ++c) {
+        for (int i = 0; i < rgb_image.rows; ++i) {
+            for (int j = 0; j < rgb_image.cols; ++j) {
+                data_buffer.push_back(static_cast<float>(flat_image.at<float >((i * rgb_image.cols + j) * 3 + c)));
+            }
+        }
+    }
+    return NDArray(data_buffer, Shape(1, 3, rgb_image.rows, rgb_image.cols), ctx);
+}
+
 // Load data from filename
 inline NDArray AsData(std::string filename, Context ctx = Context::cpu()) {
     cv::Mat bgr_image = cv::imread(filename, 1);
@@ -119,6 +139,11 @@ inline bool EndsWith(std::string const & value, std::string const & ending)
 {
     if (ending.size() > value.size()) return false;
     return std::equal(ending.rbegin(), ending.rend(), value.rbegin());
+}
+
+inline bool Contains(std::string const & value, std::string const & substring)
+{
+    return strstr(value.c_str(), substring.c_str());
 }
 
 inline std::vector<std::string> LoadClassNames(std::string filename) {

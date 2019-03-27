@@ -93,7 +93,7 @@ void ParseArgs(int argc, char** argv) {
 
     // parse class names
     if (args::class_name_file.empty()) {
-        if (EndsWith(args::model, "voc")) {
+        if (EndsWith(args::model, "voc") || Contains(args::model, "fcn")) {
             if (!args::quite) {
                 LOG(INFO) << "Using Pascal VOC names...";
             }
@@ -172,8 +172,76 @@ void RunDemo() {
     MXNotifyShutdown();
 }
 
+void RunFcnDemo() {
+    // context
+    Context ctx = Context::cpu();
+    if (args::gpu >= 0) {
+        ctx = Context::gpu(args::gpu);
+        if (!args::quite) {
+            LOG(INFO) << "Using GPU(" << args::gpu << ")...";
+        }
+    }
+
+    // load symbol and parameters
+    Symbol net;
+    std::map<std::string, NDArray> args, auxs;
+    LoadCheckpoint(args::model, args::epoch, &net, &args, &auxs, ctx);
+
+    // load image as data
+    cv::Mat image = cv::imread(args::image, 1);
+
+    // set input and bind executor
+    auto data = AsTensor(image, ctx);
+    args["data"] = data;
+    Executor *exec = net.SimpleBind(
+            ctx, args, std::map<std::string, NDArray>(),
+            std::map<std::string, OpReqType>(), auxs);
+
+    // begin forward
+    NDArray::WaitAll();
+    auto start = std::chrono::steady_clock::now();
+    exec->Forward(false);
+    auto preds = exec->outputs[0].Copy(Context(kCPU, 0));
+    auto probs = exec->outputs[1].Copy(Context(kCPU, 0));
+
+    NDArray::WaitAll();
+    auto end = std::chrono::steady_clock::now();
+    if (!args::quite) {
+        LOG(INFO) << "Elapsed time {Forward->Result}: " << std::chrono::duration<double, std::milli>(end - start).count() << " ms";
+    }
+
+    auto preds_a = preds.ArgmaxChannel();
+    preds_a.WaitToRead();
+
+    cv::Mat dst, dst_b;
+    int num_classes = synset::CLASS_NAMES.size();
+    cv::Mat dst_f(image.rows, image.cols, CV_32FC1, (float *)preds_a.GetData());
+    dst_f.convertTo(dst_b, CV_8UC1, (double)UCHAR_MAX/num_classes);
+    cv::applyColorMap(dst_b, dst, cv::COLORMAP_JET);
+
+    // display drawn image
+    if (!args::no_display) {
+        cv::imshow("map", dst);
+        cv::waitKey();
+    }
+
+    // output image
+    if (!args::output.empty()) {
+        cv::imwrite(args::output, dst);
+    }
+
+    delete exec;
+    MXNotifyShutdown();
+}
+
 int main(int argc, char** argv) {
     ParseArgs(argc, argv);
-    RunDemo();
+    if (Contains(args::model, "fcn")) {
+        // Export the model with python/fcn_export.py
+        // Run with args: fcn_exported_model test.jpg
+        RunFcnDemo();
+    } else {
+        RunDemo();
+    }
     return 0;
 }
